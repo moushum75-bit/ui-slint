@@ -19,9 +19,9 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.variant }} (ARM64)
-    # Native ARM64 compilation. Ubuntu 22.04's glibc baseline is friendlier
-    # to Raspberry Pi OS releases than building on a newer Ubuntu image.
+
     runs-on: ubuntu-22.04-arm
+
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +34,12 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Verify project directory
+        run: |
+          pwd
+          ls -la
+          test -f Cargo.toml
 
       - name: Install Linux development libraries
         run: |
@@ -70,17 +76,23 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ui-slint -> target
+          workspaces: . -> target
           key: ${{ matrix.variant }}
 
       - name: Build release executable
-        working-directory: ui-slint
+        shell: bash
         run: |
           cargo build --locked --release -p ui-slint ${{ matrix.cargo_args }}
-          mkdir -p ../dist
-          install -D target/release/ui-slint "../dist/ui-slint-${{ matrix.variant }}-aarch64"
-          cd ../dist
-          sha256sum "ui-slint-${{ matrix.variant }}-aarch64" > "ui-slint-${{ matrix.variant }}-aarch64.sha256"
+
+          mkdir -p dist
+
+          install -D target/release/ui-slint \
+            "dist/ui-slint-${{ matrix.variant }}-aarch64"
+
+          cd dist
+
+          sha256sum "ui-slint-${{ matrix.variant }}-aarch64" \
+            > "ui-slint-${{ matrix.variant }}-aarch64.sha256"
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
@@ -94,11 +106,16 @@ jobs:
 
   release:
     name: Publish GitHub Release
+
     if: startsWith(github.ref, 'refs/tags/v')
+
     needs: build
+
     runs-on: ubuntu-22.04
+
     permissions:
       contents: write
+
     steps:
       - name: Download ARM64 build artifacts
         uses: actions/download-artifact@v4
