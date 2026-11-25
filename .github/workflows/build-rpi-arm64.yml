@@ -1,0 +1,117 @@
+name: Build Raspberry Pi ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rpi-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }} (ARM64)
+    # Native ARM64 compilation. Ubuntu 22.04's glibc baseline is friendlier
+    # to Raspberry Pi OS releases than building on a newer Ubuntu image.
+    runs-on: ubuntu-22.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: desktop
+            cargo_args: ''
+          - variant: kms
+            cargo_args: '--no-default-features --features kms'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Linux development libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            cmake \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libx11-dev \
+            libudev-dev \
+            libinput-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libseat-dev \
+            libegl1-mesa-dev \
+            libgles2-mesa-dev \
+            libssl-dev
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show build environment
+        run: |
+          uname -m
+          rustc -vV
+          cargo --version
+          pkg-config --modversion fontconfig
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui-slint -> target
+          key: ${{ matrix.variant }}
+
+      - name: Build release executable
+        working-directory: ui-slint
+        run: |
+          cargo build --locked --release -p ui-slint ${{ matrix.cargo_args }}
+          mkdir -p ../dist
+          install -D target/release/ui-slint "../dist/ui-slint-${{ matrix.variant }}-aarch64"
+          cd ../dist
+          sha256sum "ui-slint-${{ matrix.variant }}-aarch64" > "ui-slint-${{ matrix.variant }}-aarch64.sha256"
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-slint-${{ matrix.variant }}-aarch64
+          path: |
+            dist/ui-slint-${{ matrix.variant }}-aarch64
+            dist/ui-slint-${{ matrix.variant }}-aarch64.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download ARM64 build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ui-slint-*-aarch64
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "ui-slint $GITHUB_REF_NAME" \
+            --generate-notes
