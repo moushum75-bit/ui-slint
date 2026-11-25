@@ -1,0 +1,144 @@
+// "Select date" popup for the history plots + the loading and message boxes.
+import { Theme } from "theme.slint";
+import { DlgButton, PickField, CalendarPopup, NumberList } from "dialog_parts.slint";
+import { PlotState } from "plot_state.slint";
+
+export component PlotDialog inherits Rectangle {
+    pure function pad(v: int) -> string { return v < 10 ? "0" + v : "" + v; }
+    property <length> row1: 112px;
+    property <length> row2: 166px;
+    property <length> fx: 270px;       // first time field
+    property <length> fstep: 66px;     // distance between time fields
+
+    if PlotState.phase == 1 || PlotState.phase == 2 || PlotState.phase == 4: Rectangle {
+        background: #00000070;
+        TouchArea { clicked => { PlotState.open-pick = 0; } }     // also blocks touches behind
+
+        // ===== phase 1: pick the dates =====
+        if PlotState.phase == 1: card := Rectangle {
+            width: min(500px, root.width - 30px); height: 306px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: 12px; background: #1b1e25; border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+
+            Text { x: 24px; y: 0; height: 52px; text: "Select date"; color: #ffffff; font-size: 19px; font-weight: 600; vertical-alignment: center; }
+            Rectangle { y: 52px; height: 1px; background: #ffffff1c; }
+            Rectangle {
+                x: parent.width - 52px; y: 0; width: 52px; height: 52px;
+                Path { x: 20px; y: 20px; width: 12px; height: 12px; viewbox-width: 12; viewbox-height: 12;
+                       commands: "M 0 0 L 12 12 M 12 0 L 0 12"; stroke: #ffffffd0; stroke-width: 1.6px; }
+                TouchArea { clicked => { PlotState.open-pick = 0; PlotState.phase = 0; } }
+            }
+
+            // Enable date range
+            Rectangle {
+                x: 24px; y: 68px; width: 240px; height: 28px;
+                Rectangle {
+                    x: 0; y: 2px; width: 24px; height: 24px; border-radius: 6px;
+                    border-width: 1.5px; border-color: #ffffffa0;
+                    background: PlotState.range-on ? Theme.accent : transparent;
+                    if PlotState.range-on: Path {
+                        x: 4px; y: 5px; width: 16px; height: 14px; viewbox-width: 16; viewbox-height: 14;
+                        commands: "M 1 7 L 6 12 L 15 2"; stroke: #ffffff; stroke-width: 2.2px;
+                    }
+                }
+                Text { x: 36px; text: "Enable date range"; color: #ffffff; font-size: 17px; vertical-alignment: center; }
+                TouchArea { clicked => { PlotState.open-pick = 0; PlotState.toggle-range(); } }
+            }
+
+            // start row
+            Text { x: 24px; y: root.row1; height: 40px; text: "Start date"; color: #ffffffd0; font-size: 16px; vertical-alignment: center; }
+            PickField { x: 120px; y: root.row1; width: 146px; text: PlotState.start-text;
+                        clicked => { PlotState.open-pick = PlotState.open-pick == 1 ? 0 : 1; } }
+            // end row
+            Text { x: 24px; y: root.row2; height: 40px; text: "End date"; color: #ffffffd0; font-size: 16px; vertical-alignment: center;
+                   opacity: PlotState.range-on ? 1.0 : 0.45; }
+            PickField { x: 120px; y: root.row2; width: 146px; text: PlotState.end-text; enabled: PlotState.range-on;
+                        clicked => { PlotState.open-pick = PlotState.open-pick == 2 ? 0 : 2; } }
+
+            // times: h : m : s for both rows
+            for idx in 6: PickField {
+                x: root.fx + Math.mod(idx, 3) * root.fstep; y: idx < 3 ? root.row1 : root.row2; width: 56px;
+                enabled: idx < 3 || PlotState.range-on;
+                text: root.pad(PlotState.times[idx]); font: 16px;
+                clicked => { PlotState.open-pick = PlotState.open-pick == idx + 3 ? 0 : idx + 3; }
+            }
+            for r in 2: Rectangle {
+                y: r == 0 ? root.row1 : root.row2; height: 40px; opacity: (r == 0 || PlotState.range-on) ? 1.0 : 0.45;
+                Text { x: root.fx + 56px; width: 10px; text: ":"; color: #ffffff; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+                Text { x: root.fx + 56px + root.fstep; width: 10px; text: ":"; color: #ffffff; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+            }
+
+            // buttons
+            for name[i] in ["Bar chart", "Freq trend", "Combine", "Cancel"]: DlgButton {
+                property <length> bw: (card.width - 48px - 30px) / 4;
+                x: 24px + i * (self.bw + 10px); y: card.height - 64px; width: self.bw;
+                text: name; primary: i == 0;
+                clicked => {
+                    PlotState.open-pick = 0;
+                    if (i == 0) { PlotState.run(1); }
+                    if (i == 1) { PlotState.run(0); }
+                    if (i == 2) { PlotState.run(2); }
+                    if (i == 3) { PlotState.phase = 0; }
+                }
+            }
+
+            // drop-downs (declared last = on top)
+            if PlotState.open-pick == 1: CalendarPopup {
+                x: 120px; y: root.row1 + 44px; width: 250px;
+                title: PlotState.start-title; can-next: PlotState.start-next; days: PlotState.start-days;
+                month-step(s) => { PlotState.cal-step(0, s); }
+                day-picked(d) => { PlotState.cal-pick(0, d); PlotState.open-pick = 0; }
+            }
+            if PlotState.open-pick == 2: CalendarPopup {
+                x: 120px; y: root.row2 - 4px - 232px; width: 250px;
+                title: PlotState.end-title; can-next: PlotState.end-next; days: PlotState.end-days;
+                month-step(s) => { PlotState.cal-step(1, s); }
+                day-picked(d) => { PlotState.cal-pick(1, d); PlotState.open-pick = 0; }
+            }
+            if PlotState.open-pick >= 3: NumberList {
+                property <int> idx: PlotState.open-pick - 3;
+                x: root.fx + Math.mod(self.idx, 3) * root.fstep; width: 56px;
+                y: (self.idx < 3 ? root.row1 : root.row2) + 44px;
+                count: Math.mod(self.idx, 3) == 0 ? 24 : 60;
+                current: PlotState.times[self.idx];
+                picked(v) => { PlotState.time-pick(self.idx, v); PlotState.open-pick = 0; }
+            }
+        }
+
+        // ===== phase 2: loading =====
+        if PlotState.phase == 2: Rectangle {
+            width: min(360px, root.width - 30px); height: 150px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: 12px; background: #1b1e25; border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+            Text { y: 30px; width: parent.width; height: 30px; text: "Loading data …"; color: #ffffff; font-size: 18px;
+                   font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            Text { y: 62px; width: parent.width; height: 22px; text: "This takes a moment"; color: #ffffff90; font-size: 13px;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            Rectangle {
+                x: 32px; y: 108px; width: parent.width - 64px; height: 4px; border-radius: 2px; background: #ffffff1c; clip: true;
+                Rectangle {
+                    width: parent.width * 0.3; height: parent.height; border-radius: 2px; background: Theme.accent;
+                    x: (Math.mod(animation-tick() / 1s, 1.2) / 1.2) * (parent.width * 1.3) - parent.width * 0.3;
+                }
+            }
+        }
+
+        // ===== phase 4: message (no data, wrong dates, database error) =====
+        if PlotState.phase == 4: Rectangle {
+            width: min(430px, root.width - 30px); height: 230px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: 12px; background: #1b1e25; border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+            Text { x: 24px; y: 0; height: 52px; text: PlotState.msg-title; color: #ffffff; font-size: 19px; font-weight: 600; vertical-alignment: center; }
+            Rectangle { y: 52px; height: 1px; background: #ffffff1c; }
+            Rectangle { x: 24px; y: 72px; width: 6px; height: 74px; border-radius: 3px;
+                        background: PlotState.msg-warn ? Theme.warning : Theme.emergency; }
+            Text { x: 44px; y: 70px; width: parent.width - 68px; height: 78px; text: PlotState.msg-text;
+                   color: #ffffff; font-size: 15px; wrap: word-wrap; vertical-alignment: center; }
+            DlgButton { x: 24px; y: parent.height - 64px; width: parent.width - 48px; text: "OK"; primary: true;
+                        clicked => { PlotState.phase = 1; } }
+        }
+    }
+}

@@ -1,0 +1,48 @@
+// State of the plot popup and chart window. Rust (src/plot_ui.rs) fills it.
+//   phase 0 closed | 1 pick dates | 2 loading | 3 chart window | 4 message box
+import { CalDay } from "dialog_parts.slint";
+import { Tick } from "trend.slint";
+
+export struct BarItem { label: string, value: string, percent: string, frac: float, color: color }
+
+export global PlotState {
+    in-out property <int> phase;
+    in-out property <int> open-pick;        // 0 none | 1 start calendar | 2 end calendar | 3..8 time list (sh sm ss eh em es)
+    in-out property <bool> range-on;
+    in property <string> start-text;
+    in property <string> end-text;
+    in property <[int]> times;              // start h m s, end h m s
+    in property <string> start-title;
+    in property <bool> start-next: true;
+    in property <[CalDay]> start-days;
+    in property <string> end-title;
+    in property <bool> end-next: true;
+    in property <[CalDay]> end-days;
+    in property <string> msg-title;
+    in property <string> msg-text;
+    in property <bool> msg-warn;
+
+    // chart window
+    in property <int> kind;                 // 0 trend | 1 bars | 2 both
+    in property <string> chart-title;
+    in-out property <length> plot-w;        // size of the trend plot, written by the window,
+    in-out property <length> plot-h;        // read by Rust to draw the paths in real pixels
+    in property <string> t-line;
+    in property <string> t-area;
+    in property <string> t-grid;
+    in property <string> t-ref;
+    in property <[Tick]> t-xticks;
+    in property <[Tick]> t-yticks;
+    in property <[BarItem]> bars;
+    in property <string> nodata-text;
+    in property <string> pie-in;
+    in property <string> pie-out;
+    in property <string> pie-in-text;
+    in property <string> pie-out-text;
+
+    callback toggle-range();
+    callback cal-step(int, int);            // which (0 start, 1 end), step
+    callback cal-pick(int, int);            // which, day
+    callback time-pick(int, int);           // index 0..5, value
+    callback run(int);                      // 0 trend, 1 bars, 2 both
+}

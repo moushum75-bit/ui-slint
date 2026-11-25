@@ -1,0 +1,90 @@
+// Design tokens: every colour, radius and font size used by the screens.
+// Restyle the whole app from here.
+
+// Fonts are compiled into the binary, so the Pi needs no fonts installed.
+import "fonts/Inter-Regular.ttf";
+import "fonts/Inter-Medium.ttf";
+import "fonts/Inter-SemiBold.ttf";
+import "fonts/InterDisplay-Light.ttf";
+import "fonts/InterDisplay-ExtraLight.ttf";
+
+export global Theme {
+    // surfaces
+    out property <brush> bg: @linear-gradient(180deg, #0d1016 0%, #07090d 100%);
+    out property <color> card: #131821;
+    out property <color> card-hi: #1a202b;      // pressed / raised
+    out property <color> line: #ffffff10;        // hairline borders
+    out property <color> grid: #ffffff0b;        // chart grid
+
+    // text
+    out property <color> text: #f1f4f9;
+    out property <color> text-2: #8c95a8;
+    out property <color> text-3: #4c5466;
+
+    // UI accent (selection, focus) - not used for alarm state
+    out property <color> accent: #6ea8ff;
+
+    // alarm levels: 0 normal, 1 alert, 2 warning, 3 emergency
+    out property <color> normal: #34d399;
+    out property <color> alert: #60a5fa;         // light blue, as in main6.py
+    out property <color> warning: #fbbf24;
+    out property <color> emergency: #f87171;
+    out property <color> offline: #6b7280;
+
+    // shape
+    out property <length> radius: 18px;
+    out property <length> radius-sm: 10px;
+    out property <length> gap: 12px;
+
+    // type
+    out property <string> font: "Inter";
+    out property <string> font-display: "Inter Display";
+    out property <length> fs-caption: 12px;
+    out property <length> fs-body: 14px;
+    out property <length> fs-value: 26px;
+
+    public pure function level-color(level: int) -> color {
+        return level == 3 ? emergency : level == 2 ? warning : level == 1 ? alert : normal;
+    }
+}
+
+// Rounded card used by every panel.
+export component Card inherits Rectangle {
+    background: Theme.card;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line;
+}
+
+export component Caption inherits Text {
+    color: Theme.text-2;
+    font-size: Theme.fs-caption;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+}
+
+// Small rounded status pill: coloured dot + text on a tinted background.
+export component Pill inherits Rectangle {
+    in property <string> text;
+    in property <color> tone: Theme.text-2;
+    in property <bool> dot: true;
+    height: 30px;
+    width: lay.preferred-width;
+    border-radius: self.height / 2;
+    background: tone.with-alpha(0.14);
+    lay := HorizontalLayout {
+        padding-left: 12px; padding-right: 14px;
+        spacing: 8px;
+        if root.dot: Rectangle {
+            width: 8px; height: 8px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            background: root.tone;
+        }
+        Text {
+            text: root.text; color: root.tone;
+            font-size: 13px; font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}

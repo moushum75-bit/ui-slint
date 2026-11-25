@@ -1,0 +1,50 @@
+// Frosted-glass building blocks shared by every section.
+import { Theme } from "theme.slint";
+
+// Glass card: translucent white over the background, hairline border and a
+// light top edge, like light catching glass. `tint` gives each section its
+// own slight colour.
+export component Glass inherits Rectangle {
+    in property <color> tint: #ffffff;
+    border-radius: 20px;
+    background: @linear-gradient(160deg, tint.with-alpha(0.13) 0%, tint.with-alpha(0.05) 100%);
+    border-width: 1px;
+    border-color: #ffffff26;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #0000003a;
+    drop-shadow-offset-y: 6px;
+    Rectangle {   // top highlight
+        x: 20px; y: 0; width: parent.width - 40px; height: 1px;
+        background: @linear-gradient(90deg, #ffffff00 0%, #ffffff70 50%, #ffffff00 100%);
+    }
+    @children
+}
+
+// Round glass button with a Material Symbols icon (SVG in ui/icons) and a
+// small label underneath. The icon is recoloured with `colorize`.
+// Floating pill button: icon + label side by side, height set by the row.
+export component PillButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> active;
+    callback clicked;
+    border-radius: self.height / 2;
+    background: ta.pressed ? #ffffff50 : root.active ? Theme.accent.with-alpha(0.55) : #ffffff26;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : #ffffff40;
+    // floating: soft shadow under each button
+    drop-shadow-blur: 12px;
+    drop-shadow-offset-y: 3px;
+    drop-shadow-color: #00000055;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 7px;
+        VerticalLayout {
+            alignment: center;
+            Image { source: root.icon; width: min(20px, root.height * 0.62); height: self.width; colorize: #ffffff; }
+        }
+        Text { text: root.label; color: #ffffffe0; font-size: 12px; font-weight: 500; vertical-alignment: center; }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}

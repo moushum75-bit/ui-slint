@@ -1,0 +1,123 @@
+// Top section (20 %): TES logo | big frequency | status lamp | power-grid emblem.
+// Colour indication: the status lamp between the number and the emblem, plus
+// the card's tint and border, follow the alarm level (green / blue / amber /
+// red) and pulse on warning / emergency.
+import { Theme } from "theme.slint";
+import { Glass } from "glass.slint";
+import { TesLogo } from "tes_logo.slint";
+
+export component FreqCard inherits Glass {
+    in property <[string]> digits;     // e.g. ["5","0",".","0","1","2"]
+    in property <bool> live;
+    in property <int> level;
+    in property <color> tone;
+    in property <string> sub-text;     // Δ · rate · time line
+    in property <string> state-text;   // NORMAL, HIGH WARNING, NO DATA ...
+    in property <bool> pulse;          // true while in warning / emergency
+    in property <bool> blink;          // toggles every 500 ms (from Rust)
+
+    property <float> glow: pulse && blink ? 0.40 : 0.20;
+    background: @linear-gradient(160deg, tone.with-alpha(glow) 0%, tone.with-alpha(0.06) 70%, #ffffff0d 100%);
+    border-width: 2px;
+    border-color: tone.with-alpha(pulse && blink ? 1.0 : 0.7);
+    drop-shadow-blur: 26px;
+    drop-shadow-color: tone.with-alpha(pulse && blink ? 0.55 : 0.3);
+    animate background, border-color, drop-shadow-color { duration: 350ms; }
+
+    // --- logos: both are 70 % of the card height ---
+    property <length> logo-h: root.height * 0.70;
+    property <length> tes-w: root.logo-h * 232 / 320;   // tes-logo.png is 232 x 320 px
+
+    // TES logo (left): drawn and animated in tes_logo.slint
+    TesLogo {
+        x: 20px; y: (parent.height - self.height) / 2;
+        width: root.tes-w; height: root.logo-h;
+        tone: root.tone;
+    }
+
+    // big frequency, centred. Each character sits in a fixed-width cell so
+    // the number never jumps sideways (Inter digits are proportional).
+    // TES logo far left, Power Grid logo far right; the number is centred on
+    // the whole card (same margin both sides, the larger logo decides).
+    property <length> side: max(20px + root.tes-w, 20px + root.logo-h) + 140px;
+    property <length> num-x: root.side;
+    property <length> num-w: root.width - 2 * root.side;
+    num := HorizontalLayout {
+        property <length> fs: min(parent.height * 0.62, root.num-w / 3.8);
+        x: root.num-x; width: root.num-w;
+        y: 0; height: parent.height * 0.82;
+        alignment: center;
+        for d in root.digits: Rectangle {
+            width: d == "." ? num.fs * 0.25 : num.fs * 0.6;
+            Text {
+                text: d;
+                // white when normal, alarm colour in alarm, faded without data
+                color: root.live ? (root.level == 0 ? #ffffff : root.tone) : #ffffff60;
+                font-family: Theme.font-display; font-weight: 300; font-size: num.fs;
+                animate color { duration: 300ms; }
+            }
+        }
+        Rectangle { width: 8px; }
+        VerticalLayout {
+            alignment: center;
+            Rectangle { height: num.fs * 0.18; }
+            Text { text: "Hz"; color: #ffffffa0; font-size: num.fs * 0.24; font-weight: 500; }
+        }
+    }
+    // details line under the number
+    Text {
+        x: root.num-x; width: root.num-w;
+        y: parent.height * 0.72; height: 24px;
+        horizontal-alignment: center; vertical-alignment: center;
+        text: root.sub-text; color: #ffffffb8; font-size: 13px;
+    }
+
+    // status lamp: a glowing light in the alarm colour with the state under it,
+    // right next to the number (just left of its first digit), so it clearly
+    // belongs to that frequency. It never goes over the TES logo.
+    // The column is 200 px wide so long states ("HIGH EMERGENCY") fit, and it
+    // ends 16 px before the first digit, so the text never touches the number.
+    property <length> lamp: root.height * 0.30;
+    property <length> lamp-col: 200px;
+    property <length> num-left: root.num-x + (root.num-w - num.preferred-width) / 2;   // first digit
+    property <length> lamp-x: max(20px + root.tes-w + 8px, root.num-left - root.lamp-col - 16px);
+    VerticalLayout {
+        width: root.lamp-col;
+        x: root.lamp-x;
+        y: 0; height: root.height;
+        alignment: center;
+        spacing: 10px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {            // outer ring
+                width: root.lamp; height: root.lamp;
+                border-radius: self.width / 2;
+                background: root.tone.with-alpha(0.18);
+                border-width: 2px; border-color: root.tone.with-alpha(0.6);
+                Rectangle {        // the light
+                    width: parent.width * 0.62; height: self.width;
+                    border-radius: self.width / 2;
+                    background: @radial-gradient(circle, root.tone.brighter(0.5) 0%, root.tone 60%, root.tone.darker(0.25) 100%);
+                    opacity: root.pulse && !root.blink ? 0.45 : 1.0;
+                    drop-shadow-blur: root.pulse && root.blink ? 26px : 16px;
+                    drop-shadow-color: root.tone;
+                    animate opacity, drop-shadow-blur { duration: 300ms; }
+                }
+            }
+        }
+        Text {
+            text: root.state-text;
+            horizontal-alignment: center;
+            color: root.tone; font-size: 13px; font-weight: 600; letter-spacing: 1.5px;
+            animate color { duration: 300ms; }
+        }
+    }
+
+    // Power Grid logo (right): round PNG with a transparent outside,
+    // so only the circle shows, no square or ring behind it
+    Image {
+        source: @image-url("images/power-grid.png");
+        x: parent.width - self.width - 20px; y: (parent.height - self.height) / 2;
+        width: root.logo-h; height: root.logo-h;
+    }
+}

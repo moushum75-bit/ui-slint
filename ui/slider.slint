@@ -1,0 +1,31 @@
+// Touch slider: tap or drag anywhere on the track. Rust decides what the value means.
+import { Theme } from "theme.slint";
+
+export component FSlider inherits Rectangle {
+    in property <float> value;
+    in property <float> min: 0;
+    in property <float> max: 1;
+    in property <length> knob: 26px;
+    in property <color> accent: Theme.accent;
+    callback changed(float);
+    height: root.knob;
+    property <length> track-w: root.width - root.knob;
+    property <float> frac: root.max > root.min
+        ? Math.max(0.0, Math.min(1.0, (root.value - root.min) / (root.max - root.min))) : 0.0;
+    function set-from(x: length) {
+        root.changed(root.min + Math.max(0.0, Math.min(1.0, (x - root.knob / 2) / root.track-w)) * (root.max - root.min));
+    }
+
+    Rectangle { x: root.knob / 2; y: (parent.height - 6px) / 2; width: root.track-w; height: 6px; border-radius: 3px; background: #ffffff22; }
+    Rectangle { x: root.knob / 2; y: (parent.height - 6px) / 2; width: root.track-w * root.frac; height: 6px; border-radius: 3px; background: root.accent; }
+    Rectangle {
+        x: root.frac * root.track-w; y: (parent.height - root.knob) / 2; width: root.knob; height: root.knob;
+        border-radius: root.knob / 2; background: #10161f; border-width: 2.5px; border-color: root.accent;
+    }
+    TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.set-from(self.mouse-x); }
+        }
+        moved => { root.set-from(self.mouse-x); }
+    }
+}

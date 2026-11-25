@@ -1,0 +1,105 @@
+// Chart window: frequency trend, distribution (bar chart + pie), or both.
+// The trend paths come from Rust in real pixels of the plot (same trick as trend.slint).
+import { Theme } from "theme.slint";
+import { PlotState } from "plot_state.slint";
+
+component Card inherits Rectangle {
+    background: #131821; border-radius: 14px; border-width: 1px; border-color: #ffffff18;
+}
+
+component TrendPlot inherits Card {
+    Text { x: 16px; y: 6px; height: 26px; vertical-alignment: center;
+           text: "Frequency trend, " + PlotState.chart-title; color: #ffffffe0; font-size: 14px; font-weight: 500; }
+    plot := Rectangle {
+        x: 60px; y: 38px; width: parent.width - 60px - 24px; height: parent.height - 38px - 26px;
+        init => { PlotState.plot-w = self.width; PlotState.plot-h = self.height; }
+        changed width => { PlotState.plot-w = self.width; }
+        changed height => { PlotState.plot-h = self.height; }
+        Rectangle { x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; border-radius: 6px;
+                    background: #060a12c8; border-width: 1px; border-color: #ffffff14; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: PlotState.t-grid; stroke: #ffffff40; stroke-width: 1.2px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: PlotState.t-ref; stroke: #ffffff90; stroke-width: 1.2px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               commands: PlotState.t-area;
+               fill: @linear-gradient(180deg, Theme.accent.with-alpha(0.30) 0%, Theme.accent.with-alpha(0.0) 100%); }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: PlotState.t-line; stroke: Theme.accent; stroke-width: 1.6px; }
+    }
+    for t in PlotState.t-yticks: Text {
+        x: plot.x - 54px; width: 46px; horizontal-alignment: right; vertical-alignment: center;
+        y: plot.y + t.pos * plot.height - 8px; height: 16px; text: t.text; color: #ffffff78; font-size: 11px;
+    }
+    for t in PlotState.t-xticks: Text {
+        x: plot.x + t.pos * plot.width - 40px; width: 80px; horizontal-alignment: center;
+        y: plot.y + plot.height + 4px; text: t.text; color: #ffffff78; font-size: 11px;
+    }
+}
+
+component BarsCard inherits Card {
+    property <length> area-w: root.width * 0.64 - 30px;
+    property <length> col-h: root.height - 46px - 10px;
+    Text { x: 16px; y: 6px; height: 26px; vertical-alignment: center;
+           text: "Frequency distribution, " + PlotState.chart-title + "  (hours per band, Hz)";
+           color: #ffffffe0; font-size: 14px; font-weight: 500; }
+    Text { x: root.width - 200px; y: 6px; width: 184px; height: 26px; horizontal-alignment: right; vertical-alignment: center;
+           text: PlotState.nodata-text; color: #ffffff80; font-size: 12px; }
+
+    for b[i] in PlotState.bars: Rectangle {
+        property <length> colw: root.area-w / 7;
+        x: 16px + i * self.colw; y: 40px; width: self.colw; height: root.col-h;
+        property <length> bar-max: self.height - 18px - 34px;
+        property <length> bar-h: b.frac > 0 ? max(3px, b.frac * self.bar-max) : 0px;
+        Rectangle { x: (parent.colw - 34px) / 2; width: 34px; height: parent.bar-h; y: parent.height - 18px - self.height;
+                    border-radius: 4px; background: b.color; }
+        Text { x: 0; width: parent.colw; y: parent.height - 18px - parent.bar-h - 32px; height: 30px;
+               text: b.value + "\n" + b.percent; color: #ffffffd0; font-size: 10px;
+               horizontal-alignment: center; vertical-alignment: bottom; }
+        Text { x: 0; width: parent.colw; y: parent.height - 16px; height: 16px; text: b.label; color: #ffffff90;
+               font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+    }
+
+    // pie: inside / outside 49.50 - 50.50 Hz
+    property <length> pie-d: min(root.height - 86px, root.width * 0.26);
+    Rectangle {
+        x: root.width * 0.66 + (root.width * 0.34 - self.width) / 2; y: 42px; width: root.pie-d; height: root.pie-d;
+        Path { width: 100%; height: 100%; viewbox-width: 100; viewbox-height: 100; commands: PlotState.pie-out; fill: #f87171; }
+        Path { width: 100%; height: 100%; viewbox-width: 100; viewbox-height: 100; commands: PlotState.pie-in; fill: #4caf50; }
+    }
+    Rectangle {
+        x: root.width * 0.66 + 12px; y: 42px + root.pie-d + 6px; width: root.width * 0.34 - 24px; height: 36px;
+        VerticalLayout {
+            Text { text: "■ " + PlotState.pie-in-text; color: #4caf50; font-size: 11px; horizontal-alignment: center; }
+            Text { text: "■ " + PlotState.pie-out-text; color: #f87171; font-size: 11px; horizontal-alignment: center; }
+        }
+    }
+}
+
+export component PlotWindow inherits Rectangle {
+    if PlotState.phase == 3: Rectangle {
+        background: #0e121a;
+        TouchArea { }   // block touches behind the window
+        property <length> top: 46px;
+        property <length> area-h: root.height - self.top - 10px;
+        property <length> split: self.area-h * 0.56;
+
+        Text { x: 16px; y: 0; height: 46px; vertical-alignment: center; color: #ffffff; font-size: 17px; font-weight: 600;
+               text: PlotState.kind == 0 ? "Frequency trend" : PlotState.kind == 1 ? "Frequency distribution" : "Frequency trend and distribution"; }
+        Rectangle {
+            x: parent.width - 56px; y: 0; width: 56px; height: 46px;
+            Path { x: 22px; y: 17px; width: 12px; height: 12px; viewbox-width: 12; viewbox-height: 12;
+                   commands: "M 0 0 L 12 12 M 12 0 L 0 12"; stroke: #ffffffd0; stroke-width: 1.8px; }
+            TouchArea { clicked => { PlotState.phase = 0; } }
+        }
+        if PlotState.kind != 1: TrendPlot {
+            x: 10px; y: parent.top; width: parent.width - 20px;
+            height: PlotState.kind == 0 ? parent.area-h : parent.split - 4px;
+        }
+        if PlotState.kind != 0: BarsCard {
+            x: 10px; width: parent.width - 20px;
+            y: PlotState.kind == 1 ? parent.top : parent.top + parent.split + 4px;
+            height: PlotState.kind == 1 ? parent.area-h : parent.area-h - parent.split - 4px;
+        }
+    }
+}

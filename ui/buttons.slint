@@ -1,0 +1,29 @@
+// Button row (5 %): floating pill buttons (icon + label), no bar behind them.
+// Material Symbols icons.
+// Icons: Google Material Symbols, rounded, Apache-2.0 licence (ui/icons/).
+import { PillButton } from "glass.slint";
+
+export component ButtonBar inherits Rectangle {
+    in property <bool> hold;
+    callback toggle-hold();
+    callback action(string);      // limits, history, snapshot, upload, gallery
+    callback display-off();
+    callback open-menu();
+
+    HorizontalLayout {
+        padding-left: 4px; padding-right: 4px;
+        spacing: 8px;
+        PillButton {
+            icon: root.hold ? @image-url("icons/play_arrow.svg") : @image-url("icons/pause.svg");
+            label: root.hold ? "Resume" : "Pause"; active: root.hold;
+            clicked => { root.toggle-hold(); }
+        }
+        PillButton { icon: @image-url("icons/tune.svg"); label: "Limits"; clicked => { root.action("limits"); } }
+        PillButton { icon: @image-url("icons/monitoring.svg"); label: "History"; clicked => { root.action("history"); } }
+        PillButton { icon: @image-url("icons/photo_camera.svg"); label: "Snapshot"; clicked => { root.action("snapshot"); } }
+        PillButton { icon: @image-url("icons/cloud_upload.svg"); label: "Upload"; clicked => { root.action("upload"); } }
+        PillButton { icon: @image-url("icons/photo_library.svg"); label: "Gallery"; clicked => { root.action("gallery"); } }
+        PillButton { icon: @image-url("icons/power_settings_new.svg"); label: "Display"; clicked => { root.display-off(); } }
+        PillButton { icon: @image-url("icons/menu.svg"); label: "Menu"; clicked => { root.open-menu(); } }
+    }
+}

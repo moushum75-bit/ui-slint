@@ -1,0 +1,121 @@
+// Cloud upload popup: pick a date, send it to the backend, show the result.
+// Rust (src/upload_ui.rs) fills UploadState; this file only draws it.
+//   phase 0 closed | 1 pick the date | 2 uploading | 3 result
+import { Theme } from "theme.slint";
+import { CalDay, DlgButton, CalendarPopup } from "dialog_parts.slint";
+
+export global UploadState {
+    in-out property <int> phase;
+    in-out property <bool> calendar-open;
+    in property <string> date-text;
+    in property <string> cal-title;
+    in property <bool> can-next: true;
+    in property <[CalDay]> days;           // 42 cells, Monday first; day 0 = empty
+    in property <string> busy-text;
+    in property <string> result-text;
+    in property <string> result-status;    // success | info | error
+    callback month-step(int);
+    callback day-picked(int);
+    callback start();                      // "Cloud upload" pressed
+}
+
+export component UploadDialog inherits Rectangle {
+    property <color> status-color: UploadState.result-status == "success" ? Theme.normal
+        : UploadState.result-status == "info" ? Theme.alert : Theme.emergency;
+    property <string> title: UploadState.phase == 1 ? "Select cloud upload date"
+        : UploadState.phase == 2 ? "Cloud upload"
+        : UploadState.result-status == "success" ? "Upload Success"
+        : UploadState.result-status == "info" ? "Info" : "Upload Failed";
+
+    if UploadState.phase > 0: Rectangle {
+        background: #00000070;
+        TouchArea { clicked => { UploadState.calendar-open = false; } }   // also blocks touches behind
+
+        card := Rectangle {
+            width: min(430px, root.width - 30px);
+            height: UploadState.phase == 1 ? 262px : UploadState.phase == 2 ? 190px : 230px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 12px;
+            background: #1b1e25;
+            border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+            animate height { duration: 120ms; }
+
+            // header
+            Text { x: 24px; y: 0; height: 52px; text: root.title; color: #ffffff; font-size: 19px;
+                   font-weight: 600; vertical-alignment: center; }
+            Rectangle { y: 52px; height: 1px; background: #ffffff1c; }
+            if UploadState.phase != 2: Rectangle {
+                x: parent.width - 52px; y: 0; width: 52px; height: 52px;
+                Path {
+                    x: 20px; y: 20px; width: 12px; height: 12px; viewbox-width: 12; viewbox-height: 12;
+                    commands: "M 0 0 L 12 12 M 12 0 L 0 12"; stroke: #ffffffd0; stroke-width: 1.6px;
+                }
+                TouchArea { clicked => { UploadState.calendar-open = false; UploadState.phase = 0; } }
+            }
+
+            // ---- phase 1: date field + buttons ----
+            if UploadState.phase == 1: Rectangle {
+                field := Rectangle {
+                    width: min(260px, card.width - 60px); height: 42px;
+                    x: (card.width - self.width) / 2; y: 74px;
+                    border-radius: 8px; border-width: 1px; border-color: #ffffff38; background: #0b0f16;
+                    Text { x: 16px; text: UploadState.date-text; color: #ffffff; font-size: 20px; vertical-alignment: center; }
+                    Path {
+                        x: parent.width - 26px; y: (parent.height - 6px) / 2; width: 10px; height: 6px;
+                        viewbox-width: 10; viewbox-height: 6; commands: "M 0 0 L 10 0 L 5 6 Z"; fill: #ffffffc0;
+                    }
+                    TouchArea { clicked => { UploadState.calendar-open = !UploadState.calendar-open; } }
+                }
+                DlgButton {
+                    x: 24px; y: card.height - 64px; width: (card.width - 48px - 16px) / 2;
+                    text: "Cancel";
+                    clicked => { UploadState.calendar-open = false; UploadState.phase = 0; }
+                }
+                DlgButton {
+                    x: 24px + (card.width - 48px - 16px) / 2 + 16px; y: card.height - 64px;
+                    width: (card.width - 48px - 16px) / 2;
+                    text: "Cloud upload"; primary: true;
+                    clicked => { UploadState.calendar-open = false; UploadState.start(); }
+                }
+
+                // calendar drop-down, floats over the buttons
+                if UploadState.calendar-open: CalendarPopup {
+                    x: field.x; y: field.y + field.height + 4px; width: field.width;
+                    title: UploadState.cal-title; can-next: UploadState.can-next; days: UploadState.days;
+                    month-step(s) => { UploadState.month-step(s); }
+                    day-picked(d) => { UploadState.day-picked(d); }
+                }
+            }
+
+            // ---- phase 2: uploading ----
+            if UploadState.phase == 2: Rectangle {
+                Text { y: 74px; width: parent.width; height: 30px; text: UploadState.busy-text; color: #ffffff;
+                       font-size: 17px; horizontal-alignment: center; vertical-alignment: center; }
+                Rectangle {
+                    x: 32px; y: 124px; width: card.width - 64px; height: 4px; border-radius: 2px;
+                    background: #ffffff1c; clip: true;
+                    Rectangle {
+                        width: parent.width * 0.3; height: parent.height; border-radius: 2px; background: Theme.accent;
+                        x: (Math.mod(animation-tick() / 1s, 1.2) / 1.2) * (parent.width * 1.3) - parent.width * 0.3;
+                    }
+                }
+            }
+
+            // ---- phase 3: result ----
+            if UploadState.phase == 3: Rectangle {
+                Rectangle {
+                    x: 24px; y: 72px; width: 6px; height: 74px; border-radius: 3px; background: root.status-color;
+                }
+                Text { x: 44px; y: 70px; width: card.width - 68px; height: 78px; text: UploadState.result-text;
+                       color: #ffffff; font-size: 16px; wrap: word-wrap; vertical-alignment: center; }
+                DlgButton {
+                    x: 24px; y: card.height - 64px; width: card.width - 48px;
+                    text: "OK"; primary: true;
+                    clicked => { UploadState.phase = 0; }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+// State of the password popup and the settings window. Rust (src/settings_ui.rs) fills it.
+export global PwdState {
+    in-out property <int> phase;          // 0 closed | 1 enter password | 2 checking | 3 access denied
+    in-out property <bool> shift;
+    in property <int> count;              // how many characters are typed (the text itself stays in Rust)
+    in property <string> denied-text: "Incorrect password";
+    callback key(string);
+    callback backspace();
+    callback submit();
+    callback cancel();
+}
+
+export global SetState {
+    in-out property <int> phase;          // 0 closed | 1 editing | 2 saving | 3 message box
+    in property <int> tab;                // 0 high alert, 1 low alert, 2 high warning, 3 low warning, 4 high emergency, 5 low emergency, 6 DF/DT
+    in property <bool> sound-on;
+    in property <string> limit-label: "Limit (Hz)";
+    in property <[float]> values;         // the 6 rows of the selected tab: limit, frequency, beep, interval, volume, wobble
+    in property <[float]> mins;
+    in property <[float]> maxs;
+    in property <[string]> texts;         // text of the value boxes
+    in property <string> msg-title;
+    in property <string> msg-text;
+    callback select-tab(int);
+    callback set-value(int, float);
+    callback step(int, int);              // row, -1 / +1
+    callback toggle-sound();
+    callback test();
+    callback stop();
+    callback submit();
+    callback cancel();
+}

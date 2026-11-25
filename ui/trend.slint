@@ -1,0 +1,204 @@
+// Trend section (45 %): time-base selector + chart.
+// Chart geometry comes from Rust (src/trend.rs) in real pixels:
+// Slint keeps a path's aspect ratio, so the viewbox equals the plot size.
+import { Theme } from "theme.slint";
+import { FSlider } from "slider.slint";
+import { Glass } from "glass.slint";
+
+export struct Tick { pos: float, text: string }
+
+// Time-base selector: plain words with a thin sliding underline (no pill box),
+// so it fits in a slim 26 px header row and leaves the height to the chart.
+export component Segmented inherits Rectangle {
+    in property <[string]> items;
+    in property <int> selected;
+    callback picked(int);
+    property <length> item-w: 52px;
+    width: item-w * items.length;
+    height: 26px;
+    // the underline under the chosen word
+    Rectangle {
+        x: root.selected * root.item-w + 12px;
+        y: parent.height - 2px;
+        width: root.item-w - 24px; height: 2px;
+        border-radius: 1px;
+        background: Theme.accent;
+        animate x { duration: 200ms; easing: ease-out; }
+    }
+    for it[i] in root.items: Rectangle {
+        x: i * root.item-w; width: root.item-w; height: parent.height - 4px;
+        Text {
+            text: it;
+            color: root.selected == i ? #ffffff : #ffffff80;
+            font-size: 13px; font-weight: root.selected == i ? 600 : 500;
+        }
+        TouchArea { clicked => { root.picked(i); } }
+    }
+}
+
+// Small round toggle with an icon: Yesterday / 3-day / Forecast.
+component CompareButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> on;
+    in property <color> hue;
+    callback clicked;
+    width: 30px; height: 26px;
+    border-radius: 13px;
+    background: ta.pressed ? #ffffff40 : root.on ? root.hue.with-alpha(0.30) : transparent;
+    border-width: 1px;
+    border-color: root.on ? root.hue : #ffffff30;
+    animate background, border-color { duration: 150ms; }
+    Image { source: root.icon; width: 18px; height: 18px; colorize: root.on ? root.hue : #ffffffb0; }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component TrendCard inherits Glass {
+    in property <string> line;
+    in property <string> area;
+    in property <string> grid;
+    in property <string> alert-lines;
+    in property <string> warning-lines;
+    in property <string> emergency-lines;
+    in property <[Tick]> xticks;
+    in property <[Tick]> yticks;
+    in property <color> tone;
+    in property <string> window-text;
+    in property <int> window-choice;
+    callback window-selected(int);
+    // Knob mode: start / end sliders (0..1 on a curve that is fine near "now", see main.rs)
+    in property <float> knob-start;
+    in property <float> knob-end;
+    in property <string> knob-start-text;
+    in property <string> knob-end-text;
+    callback knob-start-moved(float);
+    callback knob-end-moved(float);
+    property <bool> knob-open: root.window-choice == 0;
+    property <length> strip-h: root.knob-open ? 56px : 0px;
+    // split view: each comparison is switched on/off on its own
+    in property <bool> show-yday;
+    in property <bool> show-avg3;
+    in property <bool> show-fc;
+    in property <string> ov-yday;     // yesterday line
+    in property <string> ov-avg3;     // 3-day average line
+    in property <string> ov-fc;       // forecast median line
+    in property <string> ov-band;     // forecast band
+    in property <float> now-pos: -1;  // NOW line, 0..1 of the width (-1 = no split)
+    callback compare-selected(int);   // 1 yesterday, 2 3-day, 3 forecast
+    property <color> c-yday: #b48cff;
+    property <color> c-avg3: #ffb54a;
+    property <color> c-fc: #4fd1ff;
+    out property <length> plot-w: plot.width;
+    out property <length> plot-h: plot.height;
+    tint: #d6e2ff;
+
+    Text { x: 16px; y: 6px; height: 24px; vertical-alignment: center;
+           text: "Frequency trend · last " + root.window-text; color: #ffffffd8; font-size: 13px; font-weight: 500; }
+    // legend for the comparison curves that are on, after the title
+    HorizontalLayout {
+        x: 230px; y: 6px; width: 300px; height: 24px; spacing: 14px;
+        alignment: start;
+        if root.show-yday: Text { text: "━ yesterday"; color: root.c-yday; font-size: 12px; vertical-alignment: center; }
+        if root.show-avg3: Text { text: "━ 3-day avg"; color: root.c-avg3; font-size: 12px; vertical-alignment: center; }
+        if root.show-fc: Text { text: "━ forecast"; color: root.c-fc; font-size: 12px; vertical-alignment: center; }
+    }
+    // Yesterday / 3-day / Forecast toggles, left of the time selector
+    HorizontalLayout {
+        x: parent.width - 52px - 260px - 14px - 3 * 30px - 2 * 6px; y: 4px; height: 26px;
+        spacing: 6px;
+        CompareButton { icon: @image-url("icons/history.svg"); hue: root.c-yday; on: root.show-yday; clicked => { root.compare-selected(1); } }
+        CompareButton { icon: @image-url("icons/stacked_line_chart.svg"); hue: root.c-avg3; on: root.show-avg3; clicked => { root.compare-selected(2); } }
+        CompareButton { icon: @image-url("icons/online_prediction.svg"); hue: root.c-fc; on: root.show-fc; clicked => { root.compare-selected(3); } }
+    }
+    Rectangle {   // thin divider between the toggles and the time selector
+        x: parent.width - 52px - 260px - 8px; y: 8px; width: 1px; height: 18px; background: #ffffff30;
+    }
+    Segmented {
+        x: parent.width - self.width - 48px; y: 4px;
+        items: ["Knob", "10 m", "1 h", "6 h", "24 h"];
+        selected: root.window-choice;
+        picked(i) => { root.window-selected(i); }
+    }
+
+    plot := Rectangle {
+        x: 52px; y: 36px + root.strip-h;
+        width: parent.width - 52px - 52px;
+        height: parent.height - 36px - root.strip-h - 20px;
+        // plot background behind the dotted grid
+        Rectangle {
+            x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px;
+            border-radius: 6px;
+            background: #060a12c8;   // near-black, 78 % opaque: makes the line and limits stand out
+            border-width: 1px; border-color: #ffffff14;
+        }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.grid; stroke: #ffffff40; stroke-width: 1.2px; }
+        // right half (future) slightly lighter, so it reads as "not live"
+        if root.now-pos >= 0: Rectangle {
+            x: root.now-pos * plot.width; width: plot.width - self.x;
+            background: #ffffff0a;
+        }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.alert-lines; stroke: Theme.alert.with-alpha(0.55); stroke-width: 1.2px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.warning-lines; stroke: Theme.warning.with-alpha(0.55); stroke-width: 1.2px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.emergency-lines; stroke: Theme.emergency.with-alpha(0.55); stroke-width: 1.2px; }
+        // soft gradient under the line
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               commands: root.area;
+               fill: @linear-gradient(180deg, root.tone.with-alpha(0.35) 0%, root.tone.with-alpha(0.0) 100%); }
+        // comparisons: forecast band, then the three lines (all under the live line)
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               commands: root.ov-band; fill: root.c-fc.with-alpha(0.18); }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.ov-fc; stroke: root.c-fc.with-alpha(0.9); stroke-width: 1.6px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.ov-avg3; stroke: root.c-avg3.with-alpha(0.9); stroke-width: 1.6px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.ov-yday; stroke: root.c-yday.with-alpha(0.9); stroke-width: 1.6px; }
+        Path { width: 100%; height: 100%; viewbox-width: plot.width / 1px; viewbox-height: plot.height / 1px;
+               fill: transparent; commands: root.line; stroke: root.tone; stroke-width: 2px; }
+        // NOW marker in the centre
+        if root.now-pos >= 0: Rectangle {
+            x: root.now-pos * plot.width - 0.75px; width: 1.5px; background: #ffffffa0;
+        }
+        if root.now-pos >= 0: Rectangle {
+            x: root.now-pos * plot.width - self.width / 2; y: 4px; width: 40px; height: 16px;
+            border-radius: 8px; background: #ffffffd0;
+            Text { text: "NOW"; color: #101828; font-size: 10px; font-weight: 600; }
+        }
+    }
+    // Knob sliders: start (older edge) and end (newer edge) of the window, within the last 24 h
+    if root.knob-open: Rectangle {
+        x: 52px; y: 34px; width: parent.width - 104px; height: 54px;
+        for name[i] in ["Start", "End"]: Rectangle {
+            y: i * 27px; height: 26px;
+            Text { x: 0; width: 44px; height: 26px; text: name; color: #ffffffb0; font-size: 12px; vertical-alignment: center; }
+            FSlider {
+                x: 48px; width: parent.width - 48px - 96px; y: 2px; knob: 22px;
+                value: i == 0 ? root.knob-start : root.knob-end;
+                changed(u) => { if (i == 0) { root.knob-start-moved(u); } else { root.knob-end-moved(u); } }
+            }
+            Text { x: parent.width - 90px; width: 90px; height: 26px; horizontal-alignment: right; vertical-alignment: center;
+                   text: i == 0 ? root.knob-start-text : root.knob-end-text; color: #ffffffd8; font-size: 12px; }
+        }
+    }
+    // frequency labels on both sides, so the chart looks symmetrical
+    for t in root.yticks: Text {
+        x: plot.x - self.width - 6px; width: 42px; horizontal-alignment: right;
+        y: plot.y + t.pos * plot.height - 8px; height: 16px;
+        vertical-alignment: center;
+        text: t.text; color: #ffffff78; font-size: 11px;
+    }
+    for t in root.yticks: Text {
+        x: plot.x + plot.width + 6px; y: plot.y + t.pos * plot.height - 8px; height: 16px;
+        vertical-alignment: center;
+        text: t.text; color: #ffffff78; font-size: 11px;
+    }
+    for t in root.xticks: Text {
+        x: plot.x + t.pos * plot.width - 30px; width: 60px;
+        y: plot.y + plot.height + 3px;
+        horizontal-alignment: center;
+        text: t.text; color: #ffffff78; font-size: 11px;
+    }
+}

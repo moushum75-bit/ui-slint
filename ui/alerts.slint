@@ -1,0 +1,118 @@
+// Alerts & notifications section (25 %).
+//   left:  event list, newest first, scrolls by touch
+//   right: today's statistics, with arrows comparing to yesterday
+// The tile texts are made in Rust (src/stats.rs) from the backend "stats" message.
+import { Theme } from "theme.slint";
+import { Glass } from "glass.slint";
+
+export struct Note { time: string, level: int, text: string }
+// level: -1 = plain white value, 0..3 = colour of that alarm level
+export struct StatTile { label: string, value: string, unit: string, sub: string, level: int }
+
+// colours of this card: deep navy instead of grey glass
+global AlertsTheme {
+    out property <color> card-top: #1a2644;
+    out property <color> card-bottom: #111a30;
+    out property <color> tile: #223155;
+    out property <color> tile-edge: #3d5590;
+    out property <color> heading: #cfe0ff;
+    out property <color> label: #8ea6d8;
+    out property <color> muted: #7f93bd;
+    out property <color> accent: #5b9dff;
+}
+
+component Tile inherits Rectangle {
+    in property <StatTile> t;
+    property <color> mark: root.t.level < 0 ? AlertsTheme.accent : Theme.level-color(root.t.level);
+    border-radius: 10px;
+    background: @linear-gradient(180deg, AlertsTheme.tile 0%, AlertsTheme.tile.darker(0.15) 100%);
+    border-width: 1px; border-color: AlertsTheme.tile-edge.with-alpha(0.45);
+    clip: true;
+    Rectangle {   // coloured strip on the left edge
+        x: 0; width: 3px; background: root.mark;
+    }
+    VerticalLayout {
+        padding-left: 12px; padding-right: 8px;
+        alignment: center;
+        spacing: 1px;
+        Text { text: root.t.label; color: AlertsTheme.label; font-size: 10px; overflow: elide; }
+        HorizontalLayout {
+            spacing: 3px;
+            Text {
+                text: root.t.value; font-size: 15px; font-weight: 600;
+                color: root.t.level < 0 ? #ffffff : Theme.level-color(root.t.level);
+            }
+            Text { text: root.t.unit; color: AlertsTheme.label; font-size: 10px; vertical-alignment: bottom; }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        Text { text: root.t.sub; color: AlertsTheme.muted; font-size: 10px; overflow: elide; }
+    }
+}
+
+export component AlertsCard inherits Glass {
+    in property <[Note]> notes;
+    in property <[StatTile]> stats;   // 8 tiles, 4 x 2
+    in property <string> stats-hint;  // e.g. "↑↓ vs yesterday"
+    // own solid navy background (replaces the grey glass of Glass)
+    background: @linear-gradient(180deg, AlertsTheme.card-top 0%, AlertsTheme.card-bottom 100%);
+    border-color: AlertsTheme.tile-edge.with-alpha(0.5);
+
+    property <length> split: root.width * 0.42;   // left list width
+
+    // ---- left: events ----
+    Rectangle { x: 18px; y: 15px; width: 6px; height: 6px; border-radius: 3px; background: AlertsTheme.accent; }
+    Text { x: 30px; y: 10px; text: "Alerts & notifications"; color: AlertsTheme.heading; font-size: 13px; font-weight: 600; }
+    if root.notes.length == 0: Text {
+        y: 34px; height: root.height - 40px; x: 0; width: root.split;
+        horizontal-alignment: center; vertical-alignment: center;
+        text: "No events yet"; color: AlertsTheme.muted; font-size: 13px;
+    }
+    Flickable {
+        x: 12px; y: 32px; width: root.split - 16px; height: root.height - 38px;
+        content-height: root.notes.length * 24px;
+        VerticalLayout {
+            for n[i] in root.notes: Rectangle {
+                height: 24px;
+                border-radius: 6px;
+                background: mod(i, 2) == 0 ? #ffffff08 : transparent;   // soft zebra rows
+                HorizontalLayout {
+                    padding-left: 6px; padding-right: 6px;
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.level-color(n.level); }
+                    }
+                    Text { text: n.time; color: AlertsTheme.label; font-size: 12px; vertical-alignment: center; min-width: 54px; }
+                    Text { text: n.text; color: #eef3ff; font-size: 13px; vertical-alignment: center;
+                           horizontal-stretch: 1; overflow: elide; }
+                }
+            }
+        }
+    }
+
+    // divider
+    Rectangle { x: root.split; y: 12px; width: 1px; height: root.height - 24px; background: AlertsTheme.tile-edge.with-alpha(0.5); }
+
+    // ---- right: statistics ----
+    Rectangle { x: root.split + 14px; y: 15px; width: 6px; height: 6px; border-radius: 3px; background: AlertsTheme.accent; }
+    Text { x: root.split + 26px; y: 10px; text: "Today's statistics"; color: AlertsTheme.heading; font-size: 13px; font-weight: 600; }
+    Text { x: root.width - self.width - 16px; y: 11px; text: root.stats-hint; color: AlertsTheme.muted; font-size: 11px; }
+
+    if root.stats.length == 0: Text {
+        x: root.split; width: root.width - root.split;
+        y: 34px; height: root.height - 40px;
+        horizontal-alignment: center; vertical-alignment: center;
+        text: "Waiting for statistics"; color: AlertsTheme.muted; font-size: 13px;
+    }
+    property <length> gx: root.split + 12px;
+    property <length> gy: 32px;
+    property <length> gap: 6px;
+    property <length> tw: (root.width - root.gx - 12px - 3 * root.gap) / 4;
+    property <length> th: (root.height - root.gy - 10px - root.gap) / 2;
+    for t[i] in root.stats: Tile {
+        x: root.gx + mod(i, 4) * (root.tw + root.gap);
+        y: root.gy + floor(i / 4) * (root.th + root.gap);
+        width: root.tw; height: root.th;
+        t: t;
+    }
+}

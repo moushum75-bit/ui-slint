@@ -1,0 +1,111 @@
+// Floating bottom sheet with a grab handle on the bottom edge: 15 buttons
+// (3 rows x 5). It covers only the alerts/statistics card under its heading.
+// Open: tap the handle, or swipe up from it.
+// Close: swipe down on the sheet, tap outside it, or tap the handle.
+import { Theme } from "theme.slint";
+
+// Solid (not see-through) pill button for the sheet, same shape as the old
+// button row: icon + label side by side.
+component SheetButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> active;
+    callback clicked;
+    border-radius: self.height / 2;
+    background: ta.pressed ? #56657f : root.active ? Theme.accent.darker(0.35) : #34405a;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : #ffffff38;
+    drop-shadow-blur: 10px; drop-shadow-offset-y: 3px; drop-shadow-color: #00000070;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 7px;
+        VerticalLayout {
+            alignment: center;
+            Image { source: root.icon; width: 18px; height: 18px; colorize: #ffffff; }
+        }
+        Text { text: root.label; color: #ffffffe8; font-size: 12px; font-weight: 500; vertical-alignment: center; }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component Drawer inherits Rectangle {
+    in-out property <bool> open;
+    in-out property <bool> hold;
+    in property <length> sheet-top;     // from app.slint: just under the "Today's statistics" heading
+    in property <length> side: 10px;    // same outer margin as the cards
+    callback action(string);
+    callback display-off();
+
+    // tap anywhere outside the sheet to close it (invisible, no dimming)
+    if root.open: TouchArea { clicked => { root.open = false; } }
+
+    // floating sheet: see-through glass, slides up from the bottom edge and
+    // stops under the statistics heading, so the trend is never covered
+    panel := Rectangle {
+        x: root.side; width: root.width - 2 * root.side;
+        height: root.height - root.sheet-top - root.side;
+        y: root.open ? root.sheet-top : root.height + 4px;
+        animate y { duration: 260ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+        border-radius: 16px;
+        background: #141b2a99;            // 60 % opaque: the cards show through
+        border-width: 1px; border-color: #ffffff40;
+        drop-shadow-blur: 24px; drop-shadow-color: #00000080;
+
+        TouchArea {   // swipe down on the sheet to close
+            moved => { if (self.mouse-y - self.pressed-y > 30px) { root.open = false; } }
+        }
+        // 3 rows x 5 buttons; unused ones say "coming in the next step"
+        GridLayout {
+            padding: 10px; padding-top: 14px;
+            spacing-horizontal: 8px; spacing-vertical: 6px;
+            Row {
+                SheetButton {
+                    icon: root.hold ? @image-url("icons/play_arrow.svg") : @image-url("icons/pause.svg");
+                    label: root.hold ? "Resume" : "Pause"; active: root.hold;
+                    clicked => { root.hold = !root.hold; }
+                }
+                SheetButton { icon: @image-url("icons/tune.svg"); label: "Limits"; clicked => { root.action("limits"); } }
+                SheetButton { icon: @image-url("icons/monitoring.svg"); label: "History"; clicked => { root.action("history"); } }
+                SheetButton { icon: @image-url("icons/bar_chart.svg"); label: "Distribution"; clicked => { root.action("distribution"); } }
+                SheetButton { icon: @image-url("icons/photo_camera.svg"); label: "Snapshot"; clicked => { root.action("snapshot"); } }
+            }
+            Row {
+                SheetButton { icon: @image-url("icons/photo_library.svg"); label: "Gallery"; clicked => { root.action("gallery"); } }
+                SheetButton { icon: @image-url("icons/cloud_upload.svg"); label: "Upload"; clicked => { root.action("upload"); } }
+                SheetButton { icon: @image-url("icons/usb.svg"); label: "USB export"; clicked => { root.action("usb export"); } }
+                SheetButton { icon: @image-url("icons/brightness_medium.svg"); label: "Brightness"; clicked => { root.action("brightness"); } }
+                SheetButton { icon: @image-url("icons/power_settings_new.svg"); label: "Display off"; clicked => { root.open = false; root.display-off(); } }
+            }
+            Row {
+                SheetButton { icon: @image-url("icons/wifi.svg"); label: "Wi-Fi"; clicked => { root.action("wi-fi"); } }
+                SheetButton { icon: @image-url("icons/schedule.svg"); label: "Date & time"; clicked => { root.action("date & time"); } }
+                SheetButton { icon: @image-url("icons/settings.svg"); label: "Settings"; clicked => { root.action("settings"); } }
+                SheetButton { icon: @image-url("icons/info.svg"); label: "About"; clicked => { root.action("about"); } }
+                SheetButton { icon: @image-url("icons/restart_alt.svg"); label: "Restart"; clicked => { root.action("restart"); } }
+            }
+        }
+    }
+
+    // grab handle: bottom centre when closed, rides on the sheet's top edge when open
+    Rectangle {
+        width: 160px; height: 16px;
+        x: (root.width - self.width) / 2;
+        y: root.open ? panel.y : root.height - self.height;
+        animate y { duration: 260ms; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+        Rectangle {
+            y: root.open ? 4px : parent.height - self.height - 4px;
+            width: 64px; height: 5px;
+            border-radius: 2.5px;
+            background: handle.pressed ? Theme.accent : #ffffff80;
+            animate background { duration: 120ms; }
+        }
+        handle := TouchArea {
+            clicked => { root.open = !root.open; }
+            moved => {
+                if (self.pressed-y - self.mouse-y > 20px) { root.open = true; }
+                if (self.mouse-y - self.pressed-y > 20px) { root.open = false; }
+            }
+        }
+    }
+}

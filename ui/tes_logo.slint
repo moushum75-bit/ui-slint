@@ -1,0 +1,82 @@
+// TES logo drawn in Slint (no picture, no background).
+// The wave stands still; only light moves over it, which is cheap for the
+// Pi's software renderer (only colours change, nothing slides):
+//   - a soft glow behind the wave breathes in and out (one breath every 2 s)
+//   - the wave line brightens with the glow
+//   - the two dots fade in turn, the letters TES glow in the same rhythm
+// A Slint Timer flips `on` every second; `animate` turns each flip into a
+// smooth fade, so there are no on/off steps.
+import { Theme } from "theme.slint";
+
+export component TesLogo inherits Rectangle {
+    in property <color> tone: Theme.accent;   // alarm colour from FreqCard
+    property <color> ink: #e8eef7;            // same white as our texts
+
+    property <bool> on;                       // flips every second
+    property <float> lit: on ? 1.0 : 0.0;     // 0..1, faded by animate
+    animate lit { duration: 1s; easing: ease-in-out; }
+    Timer {
+        interval: 1s;
+        running: true;
+        triggered => { root.on = !root.on; }
+    }
+
+    // the meter box: top 64 % of the logo
+    box := Rectangle {
+        x: 0; y: 0; width: root.width; height: root.height * 0.64;
+        border-radius: self.width * 0.14;
+        border-width: max(2px, root.width * 0.045);
+        border-color: root.ink;
+
+        // the screen inside the box; clip keeps the glow inside it
+        screen := Rectangle {
+            x: parent.width * 0.12; y: parent.width * 0.12;
+            width: parent.width * 0.76; height: parent.height * 0.52;
+            border-radius: parent.width * 0.05;
+            border-width: max(1.5px, root.width * 0.035);
+            border-color: root.ink;
+            clip: true;
+
+            Text {
+                y: parent.height * 0.06;
+                width: parent.width; horizontal-alignment: center;
+                text: "Hz"; color: root.ink;
+                font-size: parent.height * 0.30; font-weight: 700;
+            }
+            // two still sine waves; the same shape is drawn twice:
+            // a wide faint stroke behind (the glow) and the thin line on top
+            for layer in 2: Path {
+                width: parent.width * 0.9; height: self.width * 20 / 60;
+                x: (parent.width - self.width) / 2;
+                y: parent.height * 0.62 - self.height / 2;
+                viewbox-width: 60; viewbox-height: 20;
+                fill: transparent;
+                stroke: layer == 0
+                    ? root.tone.with-alpha(0.10 + 0.35 * root.lit)                 // glow
+                    : root.tone.mix(root.ink, 1 - 0.45 * root.lit);                // line
+                stroke-width: layer == 0
+                    ? max(4px, root.width * 0.11)
+                    : max(1.5px, root.width * 0.035);
+                commands: "M 0 10 C 5 0 10 0 15 10 S 25 20 30 10 S 40 0 45 10 S 55 20 60 10";
+            }
+        }
+        // two dots, bottom right: they fade in turn
+        for i in 2: Rectangle {
+            property <float> l: i == 0 ? root.lit : 1 - root.lit;
+            width: parent.width * 0.11; height: self.width;
+            x: parent.width * (0.56 + i * 0.18); y: parent.height * 0.76;
+            border-radius: self.width / 2;
+            background: root.ink.with-alpha(0.35).mix(root.tone, 1 - self.l);
+        }
+    }
+
+    // the letters, under the box
+    Text {
+        x: 0; y: root.height * 0.66;
+        width: root.width; height: root.height * 0.34;
+        horizontal-alignment: center; vertical-alignment: center;
+        text: "TES";
+        font-size: root.height * 0.33; font-weight: 800; letter-spacing: root.width * 0.02;
+        color: root.ink.mix(root.tone, 1 - root.lit * 0.6);
+    }
+}

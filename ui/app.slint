@@ -1,0 +1,197 @@
+// Main window (v5 layout from sadiq's sketch). Top to bottom, by height:
+//   20 %  freq_card.slint   TES logo | big frequency | power-grid emblem,
+//                           and the colour indication of the frequency state
+//   55 %  trend.slint       time-base selector + chart
+//   25 %  alerts.slint      alerts & notifications + today's statistics
+//          (controls: bottom sheet in drawer.slint, handle at the bottom edge)
+// Shared looks: theme.slint (colours, fonts), glass.slint (glass card, button).
+// This file only places the sections and declares what Rust sets.
+import { Theme } from "theme.slint";
+import { FreqCard } from "freq_card.slint";
+import { TrendCard, Tick } from "trend.slint";
+import { AlertsCard, Note, StatTile } from "alerts.slint";
+import { Drawer } from "drawer.slint";
+import { UploadDialog, UploadState } from "upload_dialog.slint";
+import { CalDay } from "dialog_parts.slint";
+import { PlotDialog } from "plot_dialog.slint";
+import { PlotWindow } from "plot_window.slint";
+import { PlotState, BarItem } from "plot_state.slint";
+import { PasswordDialog, SettingsWindow } from "settings_dialog.slint";
+import { PwdState, SetState } from "settings_state.slint";
+
+export { Tick, Note, StatTile, UploadState, CalDay, PlotState, BarItem, PwdState, SetState }
+
+export component AppWindow inherits Window {
+    title: "Grid Frequency Analyzer";
+    preferred-width: 1024px;
+    preferred-height: 600px;
+    min-width: 800px;
+    min-height: 480px;
+    default-font-family: Theme.font;
+    background: #1e2737;
+
+    // --- connection / health ---
+    in property <bool> connected;
+    in property <bool> has-data;
+    in property <string> fault-text;
+    in property <bool> serial-ok;
+    in property <bool> net-ok;
+    in property <bool> sim;
+    in property <string> temp-text: "--";
+    in property <bool> fan-on;
+    in property <bool> blink;
+
+    // --- live values ---
+    in property <[string]> digits: ["-", "-", ".", "-", "-", "-"];
+    in property <float> freq: 50.0;
+    in property <string> dev-text;
+    in property <string> status-text: "Waiting";
+    in property <int> level;
+    in property <bool> dfdt;
+    in property <string> rocof-text;
+    in property <string> clock-text: "--:--:--";
+    in property <string> date-text;
+    in property <string> min-text: "—"; in property <string> min-time;
+    in property <string> max-text: "—"; in property <string> max-time;
+    in property <string> avg-text: "—";
+
+    // --- limits (Hz) ---
+    in property <float> lim-el: 49.25; in property <float> lim-wl: 49.5; in property <float> lim-al: 49.85;
+    in property <float> lim-ah: 50.4;  in property <float> lim-wh: 51.0; in property <float> lim-eh: 51.25;
+    in property <float> meter-lo: 48.5; in property <float> meter-hi: 51.5;
+
+    // --- trend (from Rust) ---
+    in property <string> t-line; in property <string> t-area; in property <string> t-grid;
+    in property <string> t-alert; in property <string> t-warning; in property <string> t-emergency;
+    in property <[Tick]> t-xticks; in property <[Tick]> t-yticks;
+    in property <string> window-text: "10 min";
+    in property <int> window-choice: 1;
+    callback window-selected(int);
+    // "Knob" chip: two sliders choose the start and the end of the window inside the last 24 h
+    in property <float> knob-start: 0.3;
+    in property <float> knob-end: 0.0;
+    in property <string> knob-start-text: "-10 min";
+    in property <string> knob-end-text: "now";
+    callback knob-start-moved(float);
+    callback knob-end-moved(float);
+    in property <bool> show-yday; in property <bool> show-avg3; in property <bool> show-fc;
+    in property <string> t-ov-yday; in property <string> t-ov-avg3; in property <string> t-ov-fc;
+    in property <string> t-ov-band;
+    in property <float> t-now-pos: -1;
+    callback compare-selected(int);
+    out property <length> trend-w: trend.plot-w;
+    out property <length> trend-h: trend.plot-h;
+
+    // --- alerts box (newest first, filled by Rust) ---
+    in property <[Note]> notes;
+    in property <[StatTile]> stats;
+
+    // --- drawer / modes ---
+    in-out property <bool> drawer-open;
+    in-out property <bool> hold;
+    in-out property <bool> screen-off;
+    in-out property <string> toast-text;
+    callback action(string);
+
+    property <bool> live: connected && has-data && fault-text == "";
+    property <color> tone: live ? Theme.level-color(level) : Theme.offline;
+
+    // --- section heights: the percentages from the sketch ---
+    property <length> pad: 10px;
+    property <length> gap: 8px;
+    // no button row any more: the bottom sheet (drawer.slint) has every control
+    property <length> avail: root.height - 2 * pad - 2 * gap;
+    property <length> h-freq: avail * 0.20;
+    property <length> h-trend: avail * 0.55;
+    property <length> h-alerts: avail * 0.25;
+    property <length> w: root.width - 2 * pad;
+
+    // ===== background: lighter slate with two soft coloured lights =====
+    Rectangle { background: @linear-gradient(170deg, #2b3850 0%, #1c2433 60%, #161c28 100%); }
+    Rectangle {
+        x: -root.width * 0.2; y: -root.height * 0.45;
+        width: root.width * 0.9; height: root.width * 0.9;
+        background: @radial-gradient(circle, #3fb8af40 0%, #3fb8af00 70%);
+    }
+    Rectangle {
+        x: root.width * 0.55; y: root.height * 0.25;
+        width: root.width * 0.8; height: root.width * 0.8;
+        background: @radial-gradient(circle, #6d7cff33 0%, #6d7cff00 70%);
+    }
+
+    FreqCard {
+        x: pad; y: pad; width: w; height: h-freq;
+        digits: root.digits; live: root.live; level: root.level; tone: root.tone;
+        pulse: root.live && root.level >= 2; blink: root.blink;
+        state-text: !root.connected ? "NO LINK"
+            : root.fault-text != "" ? "METER FAULT"
+            : !root.has-data ? "NO DATA" : root.status-text.to-uppercase();
+        sub-text: root.live
+            ? "Δ " + root.dev-text + "   ·   Rate " + root.rocof-text + " Hz/s   ·   " + root.clock-text
+            : root.clock-text;
+    }
+
+    trend := TrendCard {
+        x: pad; y: pad + h-freq + gap; width: w; height: h-trend;
+        line: root.t-line; area: root.t-area; grid: root.t-grid;
+        alert-lines: root.t-alert; warning-lines: root.t-warning; emergency-lines: root.t-emergency;
+        xticks: root.t-xticks; yticks: root.t-yticks;
+        tone: root.tone;
+        window-text: root.window-text;
+        window-choice: root.window-choice;
+        window-selected(i) => { root.window-selected(i); }
+        knob-start: root.knob-start; knob-end: root.knob-end;
+        knob-start-text: root.knob-start-text; knob-end-text: root.knob-end-text;
+        knob-start-moved(u) => { root.knob-start-moved(u); }
+        knob-end-moved(u) => { root.knob-end-moved(u); }
+        show-yday: root.show-yday; show-avg3: root.show-avg3; show-fc: root.show-fc;
+        ov-yday: root.t-ov-yday; ov-avg3: root.t-ov-avg3; ov-fc: root.t-ov-fc;
+        ov-band: root.t-ov-band; now-pos: root.t-now-pos;
+        compare-selected(i) => { root.compare-selected(i); }
+    }
+
+    AlertsCard {
+        x: pad; y: pad + h-freq + h-trend + 2 * gap; width: w; height: h-alerts;
+        notes: root.notes;
+        stats: root.stats;
+        stats-hint: "↑ ↓ compared with yesterday";
+    }
+
+    // bottom sheet: tap or swipe up the handle at the bottom centre
+    Drawer {
+        width: 100%; height: 100%;
+        open <=> root.drawer-open;
+        sheet-top: pad + h-freq + h-trend + 2 * gap + 32px;   // under the card headings
+        side: pad;
+        hold <=> root.hold;
+        action(what) => { root.action(what); }
+        display-off => { root.screen-off = true; }
+    }
+
+    // settings: password popup, then the settings window (state in settings_state.slint)
+    SettingsWindow { width: 100%; height: 100%; }
+    PasswordDialog { width: 100%; height: 100%; }
+
+    // history plots: chart window, then the date popup on top (state in PlotState, see plot_state.slint)
+    PlotWindow { width: 100%; height: 100%; }
+    PlotDialog { width: 100%; height: 100%; }
+
+    // cloud upload popup (all its state lives in UploadState, see upload_dialog.slint)
+    UploadDialog { width: 100%; height: 100%; }
+
+    if root.toast-text != "": Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.height * 0.45;
+        width: toast.preferred-width + 40px; height: 40px;
+        border-radius: 20px;
+        background: #33415a; border-width: 1px; border-color: #ffffff30;
+        drop-shadow-blur: 20px; drop-shadow-color: #00000060;
+        toast := Text { text: root.toast-text; color: #ffffff; font-size: 14px; }
+    }
+
+    // display off: black screen, any touch wakes it
+    if root.screen-off: Rectangle {
+        background: #000000;
+        TouchArea { clicked => { root.screen-off = false; } }
+    }
+}

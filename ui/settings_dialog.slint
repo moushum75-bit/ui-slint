@@ -1,0 +1,223 @@
+// Password popup (with on-screen keyboard), "Access denied" box and the settings window.
+import { Theme } from "theme.slint";
+import { DlgButton } from "dialog_parts.slint";
+import { FSlider } from "slider.slint";
+import { PwdState, SetState } from "settings_state.slint";
+
+component OskKey inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    callback pressed;
+    height: 36px; border-radius: 7px;
+    background: ta.pressed ? #3a4660 : root.on ? #2f3b52 : #232b3a;
+    Text { text: root.label; color: #ffffff; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { clicked => { root.pressed(); } }
+}
+
+component Backdrop inherits Rectangle {
+    background: #00000078;
+    TouchArea { }   // blocks touches behind
+}
+
+export component PasswordDialog inherits Rectangle {
+    if PwdState.phase == 1 || PwdState.phase == 2: Backdrop {
+        card := Rectangle {
+            width: min(540px, root.width - 20px); height: 386px;
+            x: (parent.width - self.width) / 2; y: max(4px, (parent.height - self.height) / 2);
+            border-radius: 12px; background: #1b1e25; border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+            property <length> kw: (self.width - 32px - 9 * 5px) / 10;
+
+            // physical keyboard works too
+            FocusScope {
+                init => { self.focus(); }
+                key-pressed(e) => {
+                    if (e.text == Key.Backspace) { PwdState.backspace(); }
+                    else if (e.text == Key.Return) { PwdState.submit(); }
+                    else if (e.text == Key.Escape) { PwdState.cancel(); }
+                    else { PwdState.key(e.text); }
+                    accept
+                }
+            }
+
+            Text { x: 20px; y: 0; height: 46px; text: "Password"; color: #ffffff; font-size: 19px; font-weight: 600; vertical-alignment: center; }
+            Rectangle { y: 46px; height: 1px; background: #ffffff1c; }
+            Rectangle {
+                x: parent.width - 52px; y: 0; width: 52px; height: 46px;
+                Path { x: 20px; y: 17px; width: 12px; height: 12px; viewbox-width: 12; viewbox-height: 12;
+                       commands: "M 0 0 L 12 12 M 12 0 L 0 12"; stroke: #ffffffd0; stroke-width: 1.6px; }
+                TouchArea { clicked => { PwdState.cancel(); } }
+            }
+            Text { x: 20px; y: 54px; height: 22px; text: "Enter password"; color: #ffffffa0; font-size: 14px; vertical-alignment: center; }
+            Rectangle {
+                x: 16px; y: 80px; width: parent.width - 32px; height: 44px; border-radius: 8px;
+                background: #0b0f16; border-width: 1px; border-color: #ffffff38;
+                // one circle per typed character (the font has no bullet glyph)
+                for n in PwdState.count: Rectangle { x: 16px + n * 20px; y: (parent.height - 12px) / 2; width: 12px; height: 12px; border-radius: 6px; background: #ffffff; }
+            }
+
+            // on-screen keyboard
+            for k[i] in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]: OskKey {
+                x: 16px + i * (card.kw + 5px); y: 134px; width: card.kw; label: k; pressed => { PwdState.key(k); }
+            }
+            for k[i] in ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]: OskKey {
+                x: 16px + i * (card.kw + 5px); y: 175px; width: card.kw;
+                label: PwdState.shift ? k.to-uppercase() : k;
+                pressed => { PwdState.key(PwdState.shift ? k.to-uppercase() : k); }
+            }
+            for k[i] in ["a", "s", "d", "f", "g", "h", "j", "k", "l"]: OskKey {
+                x: 16px + card.kw / 2 + i * (card.kw + 5px); y: 216px; width: card.kw;
+                label: PwdState.shift ? k.to-uppercase() : k;
+                pressed => { PwdState.key(PwdState.shift ? k.to-uppercase() : k); }
+            }
+            OskKey { x: 16px; y: 257px; width: card.kw * 1.5; label: "⇧"; on: PwdState.shift;
+                     pressed => { PwdState.shift = !PwdState.shift; } }
+            for k[i] in ["z", "x", "c", "v", "b", "n", "m"]: OskKey {
+                x: 16px + card.kw * 1.5 + 5px + i * (card.kw + 5px); y: 257px; width: card.kw;
+                label: PwdState.shift ? k.to-uppercase() : k;
+                pressed => { PwdState.key(PwdState.shift ? k.to-uppercase() : k); }
+            }
+            OskKey { x: parent.width - 16px - card.kw * 1.5; y: 257px; width: card.kw * 1.5; label: "⌫";
+                     pressed => { PwdState.backspace(); } }
+
+            DlgButton { x: 16px; y: card.height - 64px; width: (card.width - 32px - 12px) / 2; text: "Cancel";
+                        clicked => { PwdState.cancel(); } }
+            DlgButton { x: 16px + (card.width - 32px - 12px) / 2 + 12px; y: card.height - 64px;
+                        width: (card.width - 32px - 12px) / 2; text: PwdState.phase == 2 ? "Checking …" : "Submit"; primary: true;
+                        clicked => { PwdState.submit(); } }
+        }
+    }
+
+    // red "Access denied" box
+    if PwdState.phase == 3: Backdrop {
+        Rectangle {
+            width: min(340px, root.width - 30px); height: 190px;
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: 14px; background: #1b1e25; border-width: 2px; border-color: Theme.emergency;
+            Text { y: 24px; height: 32px; width: parent.width; text: "Access denied"; color: Theme.emergency; font-size: 22px;
+                   font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            Text { y: 62px; height: 28px; width: parent.width; text: PwdState.denied-text; color: #ffffff; font-size: 17px;
+                   horizontal-alignment: center; vertical-alignment: center; }
+            DlgButton { x: (parent.width - 120px) / 2; y: parent.height - 66px; width: 120px; text: "OK"; primary: true;
+                        clicked => { PwdState.phase = 1; } }
+        }
+    }
+}
+
+component Stepper inherits Rectangle {
+    in property <string> text;
+    callback clicked;
+    width: 32px; height: 32px; border-radius: 7px;
+    background: ta.pressed ? #3a4660 : #232b3a; border-width: 1px; border-color: #ffffff30;
+    Text { text: root.text; color: #ffffff; font-size: 20px; horizontal-alignment: center; vertical-alignment: center; }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SettingsWindow inherits Rectangle {
+    pure function tab-color(i: int) -> color {
+        return i < 2 ? Theme.alert : i < 4 ? Theme.warning : i < 6 ? Theme.emergency : #8b7cf6;
+    }
+    property <[string]> tab-names: ["High\nalert", "Low\nalert", "High\nwarning", "Low\nwarning", "High\nemergency", "Low\nemergency", "DF/DT\nHz/s"];
+
+    if SetState.phase == 1 || SetState.phase == 2 || SetState.phase == 3: Backdrop {
+        card := Rectangle {
+            width: min(860px, root.width - 16px); height: min(470px, root.height - 10px);
+            x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+            border-radius: 12px; background: #1b1e25; border-width: 1px; border-color: #ffffff2a;
+            drop-shadow-blur: 30px; drop-shadow-color: #000000a0;
+            property <length> rowh: 43px;
+
+            // header: title, sound switch, close
+            Text { x: 20px; y: 0; height: 46px; text: "Settings"; color: #ffffff; font-size: 19px; font-weight: 600; vertical-alignment: center; }
+            Text { x: 130px; y: 0; height: 46px; text: "Sound"; color: #ffffffd0; font-size: 16px; vertical-alignment: center; }
+            Rectangle {
+                x: 196px; y: 8px; width: 64px; height: 30px; border-radius: 15px;
+                background: SetState.sound-on ? #4c8f1c : #3a4252;
+                Text { text: SetState.sound-on ? "On" : "Off"; color: #ffffff; font-size: 15px; font-weight: 600;
+                       horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { SetState.toggle-sound(); } }
+            }
+            Rectangle { y: 46px; height: 1px; background: #ffffff1c; }
+            Rectangle {
+                x: parent.width - 52px; y: 0; width: 52px; height: 46px;
+                Path { x: 20px; y: 17px; width: 12px; height: 12px; viewbox-width: 12; viewbox-height: 12;
+                       commands: "M 0 0 L 12 12 M 12 0 L 0 12"; stroke: #ffffffd0; stroke-width: 1.6px; }
+                TouchArea { clicked => { SetState.cancel(); } }
+            }
+
+            // level tabs
+            for name[i] in root.tab-names: Rectangle {
+                property <length> tw: (card.width - 32px - 6 * 6px) / 7;
+                x: 16px + i * (self.tw + 6px); y: 54px; width: self.tw; height: 50px; border-radius: 8px;
+                background: ta.pressed ? #2c3547 : (SetState.tab == i ? #2a3346 : #202733);
+                border-width: SetState.tab == i ? 1.5px : 1px; border-color: SetState.tab == i ? #ffffffc0 : #ffffff28;
+                Text { y: 2px; height: parent.height - 8px; text: name; color: #ffffff; font-size: 13px;
+                       font-weight: SetState.tab == i ? 600 : 400; horizontal-alignment: center; vertical-alignment: center; }
+                Rectangle { x: 10px; y: parent.height - 7px; width: parent.width - 20px; height: 3px; border-radius: 2px; background: root.tab-color(i); }
+                ta := TouchArea { clicked => { SetState.select-tab(i); } }
+            }
+
+            // the six rows of the selected tab
+            for lab[i] in ["", "Frequency (Hz)", "Beep (s)", "Interval (s)", "Volume (0-1)", "Wobble (Hz)"]: Rectangle {
+                x: 16px; y: 112px + i * card.rowh; width: card.width - 32px; height: card.rowh;
+                Text { x: 4px; y: 0; width: 140px; height: 30px; vertical-alignment: center; color: #ffffffd8; font-size: 15px;
+                       text: i == 0 ? SetState.limit-label : lab; }
+                Stepper { x: 148px; y: 0; text: "−"; clicked => { SetState.step(i, -1); } }
+                FSlider {
+                    x: 188px; y: 3px; width: parent.width - 188px - 40px - 100px - 8px; knob: 24px;
+                    value: SetState.values[i]; min: SetState.mins[i]; max: SetState.maxs[i];
+                    accent: root.tab-color(SetState.tab);
+                    changed(v) => { SetState.set-value(i, v); }
+                }
+                Text { x: 188px + 12px; y: 27px; text: "" + SetState.mins[i]; color: #ffffff60; font-size: 10px; }
+                Text { x: parent.width - 40px - 100px - 8px - 12px - self.width + 12px; y: 27px; width: 60px; horizontal-alignment: right;
+                       text: "" + SetState.maxs[i]; color: #ffffff60; font-size: 10px; }
+                Stepper { x: parent.width - 100px - 40px; y: 0; text: "+"; clicked => { SetState.step(i, 1); } }
+                Rectangle {
+                    x: parent.width - 100px; y: 0; width: 100px; height: 32px; border-radius: 7px;
+                    background: #0b0f16; border-width: 1px; border-color: #ffffff30;
+                    Text { text: SetState.texts[i]; color: #ffffff; font-size: 15px; font-weight: 500;
+                           horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+
+            // bottom bar
+            DlgButton { x: 16px; y: card.height - 56px; width: 118px; height: 40px; text: "Test sound"; clicked => { SetState.test(); } }
+            Rectangle {
+                x: 142px; y: card.height - 56px; width: 84px; height: 40px; border-radius: 8px;
+                background: ta-stop.pressed ? #3a2a2a : #0b0f16; border-width: 1px; border-color: #f8717166;
+                Text { text: "Stop"; color: Theme.emergency; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                ta-stop := TouchArea { clicked => { SetState.stop(); } }
+            }
+            Text { x: 238px; y: card.height - 56px; height: 40px; width: card.width - 238px - 260px; text: "Plays the selected level";
+                   color: #ffffff80; font-size: 13px; vertical-alignment: center; }
+            DlgButton { x: card.width - 16px - 120px - 10px - 120px; y: card.height - 56px; width: 120px; height: 40px; text: "Cancel";
+                        clicked => { SetState.cancel(); } }
+            DlgButton { x: card.width - 16px - 120px; y: card.height - 56px; width: 120px; height: 40px; text: "Submit"; primary: true;
+                        clicked => { SetState.submit(); } }
+
+            // saving ...
+            if SetState.phase == 2: Rectangle {
+                background: #1b1e25d8; border-radius: 12px;
+                TouchArea { }
+                Text { text: "Saving settings …"; color: #ffffff; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            // message box (error from the backend)
+            if SetState.phase == 3: Rectangle {
+                background: #000000a0; border-radius: 12px;
+                TouchArea { }
+                Rectangle {
+                    width: min(400px, parent.width - 30px); height: 200px;
+                    x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                    border-radius: 14px; background: #1b1e25; border-width: 2px; border-color: Theme.emergency;
+                    Text { y: 20px; height: 30px; width: parent.width; text: SetState.msg-title; color: Theme.emergency; font-size: 20px;
+                           font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    Text { x: 20px; y: 56px; width: parent.width - 40px; height: 78px; text: SetState.msg-text; color: #ffffff; font-size: 15px;
+                           wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; }
+                    DlgButton { x: (parent.width - 120px) / 2; y: parent.height - 56px; width: 120px; height: 40px; text: "OK"; primary: true;
+                                clicked => { SetState.phase = 1; } }
+                }
+            }
+        }
+    }
+}
